@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registros SharePoint</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+<style>
+  :root{--bg:#f4f6f9;--card:#fff;--tx:#1b2430;--mut:#667085;--bd:#d9dee7;--pri:#0f6cbd;--pri2:#0b5a9e;--ok:#177a3c;--err:#b42318;--warn:#a15c07}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+  header{background:var(--pri);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;flex:1}
+  main{max-width:1000px;margin:20px auto;padding:0 16px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:18px}
+  .card h2{margin:0 0 12px;font-size:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
+  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font:inherit;background:#fff;color:var(--tx)}
+  textarea{min-height:80px;resize:vertical}
+  .full{grid-column:1/-1}
+  button{background:var(--pri);color:#fff;border:0;border-radius:6px;padding:9px 16px;font:inherit;cursor:pointer}
+  button:hover{background:var(--pri2)}
+  button.sec{background:#fff;color:var(--pri);border:1px solid var(--pri)}
+  button.sec:hover{background:#eef5fc}
+  header button{background:#fff;color:var(--pri)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+  #msg{padding:10px 14px;border-radius:6px;font-size:14px;display:none}
+  #msg.ok{display:block;background:#e6f4ea;color:var(--ok)}
+  #msg.err{display:block;background:#fdecea;color:var(--err)}
+  #msg.info{display:block;background:#eef5fc;color:var(--pri2)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd);vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase}
+  .tablewrap{overflow-x:auto}
+  .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;background:#eef1f6}
+  .pending{color:var(--warn);font-size:13px}
+  details summary{cursor:pointer;font-weight:600}
+  small{color:var(--mut)}
+  code{background:#eef1f6;padding:1px 5px;border-radius:4px;font-size:12px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Registros → SharePoint</h1>
+  <span id="user" style="font-size:13px"></span>
+  <button id="btnLogin">Iniciar sesión</button>
+  <button id="btnLogout" class="hide">Cerrar sesión</button>
+</header>
+
+<main>
+  <div id="msg"></div>
+
+  <details class="card" id="cfgCard" open>
+    <summary>⚙️ Configuración</summary>
+    <div class="grid" style="margin-top:12px">
+      <div class="full">
+        <label>Modo de conexión</label>
+        <select id="mode">
+          <option value="graph">Microsoft Graph (inicio de sesión + lista SharePoint)</option>
+          <option value="flow">Power Automate (URL HTTP de un flujo)</option>
+        </select>
+      </div>
+      <div class="graph"><label>Client ID (registro de app Entra ID)</label><input id="clientId" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      <div class="graph"><label>Tenant ID (o dominio)</label><input id="tenantId" placeholder="contoso.onmicrosoft.com o GUID"></div>
+      <div class="graph full"><label>URL del sitio SharePoint</label><input id="siteUrl" placeholder="https://contoso.sharepoint.com/sites/MiSitio"></div>
+      <div class="graph"><label>Nombre de la lista</label><input id="listName" value="Registros"></div>
+      <div class="flow hide full"><label>URL del flujo (desencadenador "Cuando se recibe una solicitud HTTP")</label><input id="flowUrl" placeholder="https://prod-00.westus.logic.azure.com/workflows/..."></div>
+    </div>
+    <div class="row">
+      <button id="btnSaveCfg">Guardar configuración</button>
+      <button id="btnCreateList" class="sec graph">Crear la lista en SharePoint</button>
+      <button id="btnTest" class="sec">Probar conexión</button>
+    </div>
+    <p><small>
+      <b>Pasos Graph:</b> en <code>entra.microsoft.com</code> → Registros de aplicaciones → Nueva → plataforma <b>Aplicación de página única (SPA)</b> con redirect URI
+      <code id="redirectUri"></code> → permisos delegados de Microsoft Graph: <code>User.Read</code> y <code>Sites.ReadWrite.All</code> (un administrador debe otorgar consentimiento).
+      Debe abrirse por <code>https://</code> o <code>http://localhost</code> (no con doble clic en <code>file://</code>).
+    </small></p>
+  </details>
+
+  <section class="card">
+    <h2>Nuevo registro</h2>
+    <form id="form" class="grid">
+      <div><label>Título *</label><input id="f_titulo" required></div>
+      <div><label>Fecha</label><input id="f_fecha" type="date"></div>
+      <div><label>Responsable</label><input id="f_resp"></div>
+      <div><label>Estado</label>
+        <select id="f_estado"><option>Pendiente</option><option>En curso</option><option>Completado</option></select></div>
+      <div><label>Prioridad</label>
+        <select id="f_prio"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
+      <div class="full"><label>Descripción</label><textarea id="f_desc"></textarea></div>
+      <div class="full row" style="margin:0">
+        <button type="submit" id="btnSave">Guardar en SharePoint</button>
+        <button type="button" class="sec" id="btnClear">Limpiar</button>
+        <span id="pendingInfo" class="pending"></span>
+        <button type="button" class="sec hide" id="btnSync">Reintentar pendientes</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card graph">
+    <div class="row" style="margin:0 0 10px;justify-content:space-between">
+      <h2 style="margin:0">Últimos registros en la lista</h2>
+      <button class="sec" id="btnLoad">Actualizar</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>ID</th><th>Título</th><th>Fecha</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Descripción</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="7"><small>Inicia sesión y pulsa Actualizar.</small></td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const GRAPH = "https://graph.microsoft.com/v1.0";
+  const SCOPES = ["User.Read", "Sites.ReadWrite.All"];
+  const CFG_KEY = "spreg_cfg", Q_KEY = "spreg_pending";
+  let msal = null, account = null, siteId = null, listId = null;
+
+  // ---------- util ----------
+  function msg(text, type = "info") {
+    const m = $("msg"); m.textContent = text; m.className = type;
+    if (type === "ok") setTimeout(() => { if (m.textContent === text) m.className = ""; }, 5000);
+  }
+  const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+  // ---------- configuración ----------
+  function readCfg() {
+    return {
+      mode: $("mode").value, clientId: $("clientId").value.trim(), tenantId: $("tenantId").value.trim(),
+      siteUrl: $("siteUrl").value.trim().replace(/\/+$/, ""), listName: $("listName").value.trim() || "Registros",
+      flowUrl: $("flowUrl").value.trim()
+    };
+  }
+  function applyCfg(c) {
+    for (const k of ["mode","clientId","tenantId","siteUrl","listName","flowUrl"]) if (c[k]) $(k).value = c[k];
+    toggleMode();
+  }
+  function toggleMode() {
+    const g = $("mode").value === "graph";
+    document.querySelectorAll(".graph").forEach(e => e.classList.toggle("hide", !g));
+    document.querySelectorAll(".flow").forEach(e => e.classList.toggle("hide", g));
+    $("btnLogin").classList.toggle("hide", !g || !!account);
+    $("btnLogout").classList.toggle("hide", !g || !account);
+  }
+  $("mode").addEventListener("change", toggleMode);
+  $("redirectUri").textContent = location.origin + location.pathname;
+
+  $("btnSaveCfg").onclick = () => {
+    lsSet(CFG_KEY, readCfg()); msal = null; siteId = listId = null;
+    msg("Configuración guardada en este navegador.", "ok");
+  };
+
+  // ---------- MSAL ----------
+  async function initMsal() {
+    const c = readCfg();
+    if (!c.clientId || !c.tenantId) throw new Error("Falta Client ID o Tenant ID en la configuración.");
+    if (location.protocol === "file:") throw new Error("Abre la app desde https:// o http://localhost; MSAL no funciona con file://.");
+    if (!msal) {
+      msal = new window.msal.PublicClientApplication({
+        auth: { clientId: c.clientId, authority: "https://login.microsoftonline.com/" + c.tenantId,
+                redirectUri: location.origin + location.pathname },
+        cache: { cacheLocation: "sessionStorage" }
+      });
+      await msal.initialize();
+      const acc = msal.getAllAccounts();
+      if (acc.length) { account = acc[0]; msal.setActiveAccount(account); }
+      updateUser();
+    }
+  }
+  function updateUser() {
+    $("user").textContent = account ? account.username : "";
+    toggleMode();
+  }
+  async function login() {
+    try {
+      await initMsal();
+      const r = await msal.loginPopup({ scopes: SCOPES });
+      account = r.account; msal.setActiveAccount(account); updateUser();
+      msg("Sesión iniciada como " + account.username, "ok");
+      loadItems();
+    } catch (e) { msg("Error de inicio de sesión: " + (e.message || e), "err"); }
+  }
+  async function logout() {
+    try { await msal.logoutPopup({ account }); } catch {}
+    account = null; siteId = listId = null; updateUser();
+  }
+  async function token() {
+    await initMsal();
+    if (!account) throw new Error("Inicia sesión primero.");
+    try { return (await msal.acquireTokenSilent({ scopes: SCOPES, account })).accessToken; }
+    catch { return (await msal.acquireTokenPopup({ scopes: SCOPES })).accessToken; }
+  }
+  $("btnLogin").onclick = login;
+  $("btnLogout").onclick = logout;
+
+  // ---------- Graph ----------
+  async function gfetch(path, opts = {}) {
+    const t = await token();
+    const r = await fetch(path.startsWith("http") ? path : GRAPH + path, {
+      ...opts, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json", ...(opts.headers || {}) }
+    });
+    if (!r.ok) {
+      let d = ""; try { d = (await r.json()).error?.message || ""; } catch {}
+      throw new Error(`Graph ${r.status}: ${d || r.statusText}`);
+    }
+    return r.status === 204 ? null : r.json();
+  }
+  async function resolveSite() {
+    if (siteId) return siteId;
+    const u = new URL(readCfg().siteUrl);
+    const s = await gfetch(`/sites/${u.hostname}:${u.pathname}`);
+    return (siteId = s.id);
+  }
+  async function resolveList(createIfMissing = false) {
+    if (listId) return listId;
+    const sid = await resolveSite(), name = readCfg().listName;
+    const res = await gfetch(`/sites/${sid}/lists?$filter=displayName eq '${name.replace(/'/g, "''")}'`);
+    if (res.value.length) return (listId = res.value[0].id);
+    if (!createIfMissing) throw new Error(`No existe la lista "${name}". Usa "Crear la lista en SharePoint".`);
+    return createList();
+  }
+  async function createList() {
+    const sid = await resolveSite(), name = readCfg().listName;
+    const body = {
+      displayName: name,
+      columns: [
+        { name: "Fecha", dateTime: { format: "dateOnly" } },
+        { name: "Responsable", text: {} },
+        { name: "Estado", choice: { choices: ["Pendiente", "En curso", "Completado"], displayAs: "dropDownMenu" } },
+        { name: "Prioridad", choice: { choices: ["Baja", "Media", "Alta"], displayAs: "dropDownMenu" } },
+        { name: "Descripcion", text: { allowMultipleLines: true } }
+      ],
+      list: { template: "genericList" }
+    };
+    const l = await gfetch(`/sites/${sid}/lists`, { method: "POST", body: JSON.stringify(body) });
+    return (listId = l.id);
+  }
+  $("btnCreateList").onclick = async () => {
+    try {
+      msg("Creando lista…");
+      listId = null;
+      const sid = await resolveSite(), name = readCfg().listName;
+      const res = await gfetch(`/sites/${sid}/lists?$filter=displayName eq '${name.replace(/'/g, "''")}'`);
+      if (res.value.length) { listId = res.value[0].id; msg(`La lista "${name}" ya existe.`, "info"); return; }
+      await createList(); msg(`Lista "${name}" creada con sus columnas.`, "ok");
+    } catch (e) { msg(e.message, "err"); }
+  };
+
+  // ---------- guardar ----------
+  function currentRecord() {
+    return {
+      Title: $("f_titulo").value.trim(), Fecha: $("f_fecha").value || null,
+      Responsable: $("f_resp").value.trim(), Estado: $("f_estado").value,
+      Prioridad: $("f_prio").value, Descripcion: $("f_desc").value.trim()
+    };
+  }
+  async function sendRecord(rec) {
+    const c = readCfg();
+    if (c.mode === "flow") {
+      if (!c.flowUrl) throw new Error("Falta la URL del flujo.");
+      const r = await fetch(c.flowUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rec) });
+      if (!r.ok) throw new Error("El flujo respondió " + r.status);
+      return;
+    }
+    const sid = await resolveSite(), lid = await resolveList(false);
+    const fields = { ...rec }; if (!fields.Fecha) delete fields.Fecha;
+    await gfetch(`/sites/${sid}/lists/${lid}/items`, { method: "POST", body: JSON.stringify({ fields }) });
+  }
+  function pendingList() { return lsGet(Q_KEY, []); }
+  function updatePending() {
+    const n = pendingList().length;
+    $("pendingInfo").textContent = n ? `${n} registro(s) pendiente(s) de envío` : "";
+    $("btnSync").classList.toggle("hide", !n);
+  }
+  $("form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const rec = currentRecord(); if (!rec.Title) return;
+    $("btnSave").disabled = true;
+    try {
+      await sendRecord(rec);
+      msg("Registro guardado en SharePoint ✔", "ok");
+      $("form").reset(); $("f_prio").value = "Media";
+      if (readCfg().mode === "graph") loadItems();
+    } catch (err) {
+      const q = pendingList(); q.push(rec); lsSet(Q_KEY, q); updatePending();
+      msg("No se pudo enviar (" + err.message + "). Se guardó localmente para reintentar.", "err");
+    } finally { $("btnSave").disabled = false; }
+  });
+  $("btnClear").onclick = () => { $("form").reset(); $("f_prio").value = "Media"; };
+  $("btnSync").onclick = async () => {
+    const q = pendingList(), rest = []; let ok = 0;
+    for (const rec of q) { try { await sendRecord(rec); ok++; } catch { rest.push(rec); } }
+    lsSet(Q_KEY, rest); updatePending();
+    msg(`${ok} enviado(s), ${rest.length} sigue(n) pendiente(s).`, rest.length ? "err" : "ok");
+    if (ok && readCfg().mode === "graph") loadItems();
+  };
+
+  // ---------- listar ----------
+  async function loadItems() {
+    if (readCfg().mode !== "graph" || !account) return;
+    try {
+      const sid = await resolveSite(), lid = await resolveList(false);
+      const r = await gfetch(`/sites/${sid}/lists/${lid}/items?$expand=fields&$top=50`);
+      const rows = r.value.sort((a, b) => Number(b.id) - Number(a.id));
+      const tb = $("tbody"); tb.innerHTML = "";
+      if (!rows.length) { tb.innerHTML = '<tr><td colspan="7"><small>Sin registros.</small></td></tr>'; return; }
+      for (const it of rows) {
+        const f = it.fields, tr = document.createElement("tr");
+        const vals = [it.id, f.Title, (f.Fecha || "").slice(0, 10), f.Responsable, f.Estado, f.Prioridad, f.Descripcion];
+        vals.forEach((v, i) => {
+          const td = document.createElement("td");
+          if (i === 4 || i === 5) { const s = document.createElement("span"); s.className = "pill"; s.textContent = v ?? ""; td.appendChild(s); }
+          else td.textContent = v ?? "";
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+      }
+    } catch (e) { msg(e.message, "err"); }
+  }
+  $("btnLoad").onclick = loadItems;
+
+  // ---------- probar ----------
+  $("btnTest").onclick = async () => {
+    const c = readCfg();
+    try {
+      if (c.mode === "flow") {
+        if (!c.flowUrl) throw new Error("Falta la URL del flujo.");
+        msg("Con Power Automate la prueba real es guardar un registro; la URL tiene formato válido: " + (/^https:\/\//.test(c.flowUrl) ? "sí" : "no"), "info");
+        return;
+      }
+      siteId = listId = null;
+      const sid = await resolveSite(); msg("Sitio encontrado. Buscando lista…");
+      await resolveList(false); msg("Conexión correcta: sitio y lista accesibles ✔", "ok");
+    } catch (e) { msg(e.message, "err"); }
+  };
+
+  // ---------- inicio ----------
+  applyCfg(lsGet(CFG_KEY, {}));
+  if (!$("f_fecha").value) $("f_fecha").valueAsDate = new Date();
+  updatePending();
+  if (readCfg().mode === "graph" && readCfg().clientId) initMsal().then(() => account && loadItems()).catch(() => {});
+})();
+</script>
+</body>
+</html>
