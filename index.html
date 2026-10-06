@@ -3,13 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Registros SharePoint</title>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+<title>Registros GitHub</title>
 <style>
-  :root{--bg:#f4f6f9;--card:#fff;--tx:#1b2430;--mut:#667085;--bd:#d9dee7;--pri:#0f6cbd;--pri2:#0b5a9e;--ok:#177a3c;--err:#b42318;--warn:#a15c07}
+  :root{--bg:#f4f6f9;--card:#fff;--tx:#1b2430;--mut:#667085;--bd:#d9dee7;--pri:#24292f;--pri2:#0f1318;--acc:#0969da;--ok:#177a3c;--err:#b42318;--warn:#a15c07}
   *{box-sizing:border-box}
   body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--tx)}
-  header{background:var(--pri);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header{background:var(--pri);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px}
   header h1{font-size:18px;margin:0;flex:1}
   main{max-width:1000px;margin:20px auto;padding:0 16px;display:grid;gap:16px}
   .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:18px}
@@ -17,19 +16,19 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
   label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
   input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;font:inherit;background:#fff;color:var(--tx)}
+  input[type=checkbox]{width:auto}
   textarea{min-height:80px;resize:vertical}
   .full{grid-column:1/-1}
-  button{background:var(--pri);color:#fff;border:0;border-radius:6px;padding:9px 16px;font:inherit;cursor:pointer}
-  button:hover{background:var(--pri2)}
-  button.sec{background:#fff;color:var(--pri);border:1px solid var(--pri)}
-  button.sec:hover{background:#eef5fc}
-  header button{background:#fff;color:var(--pri)}
+  button{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:9px 16px;font:inherit;cursor:pointer}
+  button:hover{filter:brightness(.92)}
+  button.sec{background:#fff;color:var(--acc);border:1px solid var(--acc)}
+  button.danger{background:#fff;color:var(--err);border:1px solid var(--err)}
   button:disabled{opacity:.5;cursor:not-allowed}
   .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
-  #msg{padding:10px 14px;border-radius:6px;font-size:14px;display:none}
+  #msg{padding:10px 14px;border-radius:6px;font-size:14px;display:none;white-space:pre-wrap}
   #msg.ok{display:block;background:#e6f4ea;color:var(--ok)}
   #msg.err{display:block;background:#fdecea;color:var(--err)}
-  #msg.info{display:block;background:#eef5fc;color:var(--pri2)}
+  #msg.info{display:block;background:#eef5fc;color:#0b5a9e}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd);vertical-align:top}
   th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase}
@@ -39,16 +38,16 @@
   details summary{cursor:pointer;font-weight:600}
   small{color:var(--mut)}
   code{background:#eef1f6;padding:1px 5px;border-radius:4px;font-size:12px}
-  .hide{display:none}
+  .hide{display:none!important}
+  .thumb{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--bd);cursor:pointer;background:#eef1f6}
+  #preview{max-width:240px;max-height:240px;border-radius:8px;border:1px solid var(--bd);display:block;margin-top:8px}
+  #camModal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:10}
+  #camBox{background:#fff;border-radius:10px;padding:14px;max-width:96vw}
+  #camBox video{max-width:100%;max-height:70vh;border-radius:8px;background:#000;display:block}
 </style>
 </head>
 <body>
-<header>
-  <h1>📋 Registros → SharePoint</h1>
-  <span id="user" style="font-size:13px"></span>
-  <button id="btnLogin">Iniciar sesión</button>
-  <button id="btnLogout" class="hide">Cerrar sesión</button>
-</header>
+<header><h1>📋 Registros con fotos → GitHub</h1></header>
 
 <main>
   <div id="msg"></div>
@@ -56,28 +55,23 @@
   <details class="card" id="cfgCard" open>
     <summary>⚙️ Configuración</summary>
     <div class="grid" style="margin-top:12px">
-      <div class="full">
-        <label>Modo de conexión</label>
-        <select id="mode">
-          <option value="graph">Microsoft Graph (inicio de sesión + lista SharePoint)</option>
-          <option value="flow">Power Automate (URL HTTP de un flujo)</option>
-        </select>
-      </div>
-      <div class="graph"><label>Client ID (registro de app Entra ID)</label><input id="clientId" placeholder="00000000-0000-0000-0000-000000000000"></div>
-      <div class="graph"><label>Tenant ID (o dominio)</label><input id="tenantId" placeholder="contoso.onmicrosoft.com o GUID"></div>
-      <div class="graph full"><label>URL del sitio SharePoint</label><input id="siteUrl" placeholder="https://contoso.sharepoint.com/sites/MiSitio"></div>
-      <div class="graph"><label>Nombre de la lista</label><input id="listName" value="Registros"></div>
-      <div class="flow hide full"><label>URL del flujo (desencadenador "Cuando se recibe una solicitud HTTP")</label><input id="flowUrl" placeholder="https://prod-00.westus.logic.azure.com/workflows/..."></div>
+      <div><label>Usuario u organización (owner)</label><input id="owner" placeholder="mi-usuario"></div>
+      <div><label>Repositorio</label><input id="repo" placeholder="mis-registros"></div>
+      <div><label>Rama</label><input id="branch" value="main"></div>
+      <div><label>Archivo de datos (JSON)</label><input id="dataPath" value="data/registros.json"></div>
+      <div><label>Carpeta de imágenes</label><input id="imgDir" value="data/imagenes"></div>
+      <div class="full"><label>Token de acceso (fine-grained, permiso Contents: Read and write)</label>
+        <input id="token" type="password" autocomplete="off" placeholder="github_pat_..."></div>
+      <div class="full"><label style="display:flex;gap:6px;align-items:center;margin:0">
+        <input type="checkbox" id="remember"> Recordar el token en este navegador (si no, se borra al cerrar la pestaña)</label></div>
     </div>
     <div class="row">
       <button id="btnSaveCfg">Guardar configuración</button>
-      <button id="btnCreateList" class="sec graph">Crear la lista en SharePoint</button>
       <button id="btnTest" class="sec">Probar conexión</button>
     </div>
     <p><small>
-      <b>Pasos Graph:</b> en <code>entra.microsoft.com</code> → Registros de aplicaciones → Nueva → plataforma <b>Aplicación de página única (SPA)</b> con redirect URI
-      <code id="redirectUri"></code> → permisos delegados de Microsoft Graph: <code>User.Read</code> y <code>Sites.ReadWrite.All</code> (un administrador debe otorgar consentimiento).
-      Debe abrirse por <code>https://</code> o <code>http://localhost</code> (no con doble clic en <code>file://</code>).
+      <b>Cómo preparar GitHub:</b> crea un repositorio <b>privado</b> (puede estar vacío con un README) → en GitHub: Settings → Developer settings → Personal access tokens →
+      <b>Fine-grained tokens</b> → limita el token <b>solo a ese repositorio</b> con <code>Contents: Read and write</code>. Los registros se guardan en el JSON y cada foto como archivo en la carpeta de imágenes, cada uno como un commit.
     </small></p>
   </details>
 
@@ -92,8 +86,22 @@
       <div><label>Prioridad</label>
         <select id="f_prio"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
       <div class="full"><label>Descripción</label><textarea id="f_desc"></textarea></div>
+
+      <div class="full">
+        <label>Imagen (opcional)</label>
+        <div class="row" style="margin:0">
+          <button type="button" class="sec" id="btnCam">📷 Tomar foto</button>
+          <button type="button" class="sec" id="btnPick">🖼️ Elegir archivo</button>
+          <button type="button" class="danger hide" id="btnRmImg">Quitar imagen</button>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" capture="environment" class="hide">
+        <input type="file" id="fileInputGallery" accept="image/*" class="hide">
+        <img id="preview" class="hide" alt="Vista previa">
+        <small id="imgInfo"></small>
+      </div>
+
       <div class="full row" style="margin:0">
-        <button type="submit" id="btnSave">Guardar en SharePoint</button>
+        <button type="submit" id="btnSave">Guardar en GitHub</button>
         <button type="button" class="sec" id="btnClear">Limpiar</button>
         <span id="pendingInfo" class="pending"></span>
         <button type="button" class="sec hide" id="btnSync">Reintentar pendientes</button>
@@ -101,223 +109,262 @@
     </form>
   </section>
 
-  <section class="card graph">
+  <section class="card">
     <div class="row" style="margin:0 0 10px;justify-content:space-between">
-      <h2 style="margin:0">Últimos registros en la lista</h2>
+      <h2 style="margin:0">Registros guardados</h2>
       <button class="sec" id="btnLoad">Actualizar</button>
     </div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>ID</th><th>Título</th><th>Fecha</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Descripción</th></tr></thead>
-        <tbody id="tbody"><tr><td colspan="7"><small>Inicia sesión y pulsa Actualizar.</small></td></tr></tbody>
+        <thead><tr><th>Imagen</th><th>Título</th><th>Fecha</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Descripción</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="7"><small>Configura el repositorio y pulsa Actualizar.</small></td></tr></tbody>
       </table>
     </div>
   </section>
 </main>
 
+<div id="camModal" class="hide">
+  <div id="camBox">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div class="row">
+      <button id="camShot">Capturar</button>
+      <button id="camCancel" class="sec">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const GRAPH = "https://graph.microsoft.com/v1.0";
-  const SCOPES = ["User.Read", "Sites.ReadWrite.All"];
-  const CFG_KEY = "spreg_cfg", Q_KEY = "spreg_pending";
-  let msal = null, account = null, siteId = null, listId = null;
+  const GH = "https://api.github.com";
+  const CFG_KEY = "ghreg_cfg", TOK_KEY = "ghreg_token", Q_KEY = "ghreg_pending";
+  const MAX_SIDE = 1280, JPEG_Q = 0.8;
+  let currentImage = null;            // dataURL JPEG
+  let camStream = null;
+  const thumbCache = new Map();       // path -> object URL
 
   // ---------- util ----------
   function msg(text, type = "info") {
     const m = $("msg"); m.textContent = text; m.className = type;
     if (type === "ok") setTimeout(() => { if (m.textContent === text) m.className = ""; }, 5000);
   }
-  const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
-  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const lsGet = (s, k, d) => { try { return JSON.parse(s.getItem(k)) ?? d; } catch { return d; } };
+  const lsSet = (s, k, v) => { try { s.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
+  const encPath = p => p.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+  function textToB64(t) {
+    const bytes = new TextEncoder().encode(t); let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function b64ToText(b64) {
+    const bin = atob(b64.replace(/\s/g, "")), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
 
   // ---------- configuración ----------
   function readCfg() {
     return {
-      mode: $("mode").value, clientId: $("clientId").value.trim(), tenantId: $("tenantId").value.trim(),
-      siteUrl: $("siteUrl").value.trim().replace(/\/+$/, ""), listName: $("listName").value.trim() || "Registros",
-      flowUrl: $("flowUrl").value.trim()
+      owner: $("owner").value.trim(), repo: $("repo").value.trim(), branch: $("branch").value.trim() || "main",
+      dataPath: $("dataPath").value.trim() || "data/registros.json",
+      imgDir: ($("imgDir").value.trim() || "data/imagenes").replace(/\/+$/, ""),
+      token: $("token").value.trim()
     };
   }
-  function applyCfg(c) {
-    for (const k of ["mode","clientId","tenantId","siteUrl","listName","flowUrl"]) if (c[k]) $(k).value = c[k];
-    toggleMode();
+  function applyCfg() {
+    const c = lsGet(localStorage, CFG_KEY, {});
+    for (const k of ["owner", "repo", "branch", "dataPath", "imgDir"]) if (c[k]) $(k).value = c[k];
+    const remembered = localStorage.getItem(TOK_KEY), session = sessionStorage.getItem(TOK_KEY);
+    if (remembered) { $("token").value = remembered; $("remember").checked = true; }
+    else if (session) $("token").value = session;
   }
-  function toggleMode() {
-    const g = $("mode").value === "graph";
-    document.querySelectorAll(".graph").forEach(e => e.classList.toggle("hide", !g));
-    document.querySelectorAll(".flow").forEach(e => e.classList.toggle("hide", g));
-    $("btnLogin").classList.toggle("hide", !g || !!account);
-    $("btnLogout").classList.toggle("hide", !g || !account);
-  }
-  $("mode").addEventListener("change", toggleMode);
-  $("redirectUri").textContent = location.origin + location.pathname;
-
   $("btnSaveCfg").onclick = () => {
-    lsSet(CFG_KEY, readCfg()); msal = null; siteId = listId = null;
+    const c = readCfg(), { token, ...rest } = c;
+    lsSet(localStorage, CFG_KEY, rest);
+    localStorage.removeItem(TOK_KEY); sessionStorage.removeItem(TOK_KEY);
+    if (token) ($("remember").checked ? localStorage : sessionStorage).setItem(TOK_KEY, token);
     msg("Configuración guardada en este navegador.", "ok");
   };
 
-  // ---------- MSAL ----------
-  async function initMsal() {
+  // ---------- GitHub API ----------
+  async function gh(path, opts = {}) {
     const c = readCfg();
-    if (!c.clientId || !c.tenantId) throw new Error("Falta Client ID o Tenant ID en la configuración.");
-    if (location.protocol === "file:") throw new Error("Abre la app desde https:// o http://localhost; MSAL no funciona con file://.");
-    if (!msal) {
-      msal = new window.msal.PublicClientApplication({
-        auth: { clientId: c.clientId, authority: "https://login.microsoftonline.com/" + c.tenantId,
-                redirectUri: location.origin + location.pathname },
-        cache: { cacheLocation: "sessionStorage" }
-      });
-      await msal.initialize();
-      const acc = msal.getAllAccounts();
-      if (acc.length) { account = acc[0]; msal.setActiveAccount(account); }
-      updateUser();
-    }
-  }
-  function updateUser() {
-    $("user").textContent = account ? account.username : "";
-    toggleMode();
-  }
-  async function login() {
-    try {
-      await initMsal();
-      const r = await msal.loginPopup({ scopes: SCOPES });
-      account = r.account; msal.setActiveAccount(account); updateUser();
-      msg("Sesión iniciada como " + account.username, "ok");
-      loadItems();
-    } catch (e) { msg("Error de inicio de sesión: " + (e.message || e), "err"); }
-  }
-  async function logout() {
-    try { await msal.logoutPopup({ account }); } catch {}
-    account = null; siteId = listId = null; updateUser();
-  }
-  async function token() {
-    await initMsal();
-    if (!account) throw new Error("Inicia sesión primero.");
-    try { return (await msal.acquireTokenSilent({ scopes: SCOPES, account })).accessToken; }
-    catch { return (await msal.acquireTokenPopup({ scopes: SCOPES })).accessToken; }
-  }
-  $("btnLogin").onclick = login;
-  $("btnLogout").onclick = logout;
-
-  // ---------- Graph ----------
-  async function gfetch(path, opts = {}) {
-    const t = await token();
-    const r = await fetch(path.startsWith("http") ? path : GRAPH + path, {
-      ...opts, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json", ...(opts.headers || {}) }
+    if (!c.token) throw new Error("Falta el token de acceso.");
+    if (!c.owner || !c.repo) throw new Error("Falta el owner o el repositorio.");
+    const r = await fetch(GH + path, {
+      ...opts,
+      headers: { Authorization: "Bearer " + c.token, Accept: "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28", ...(opts.headers || {}) }
     });
     if (!r.ok) {
-      let d = ""; try { d = (await r.json()).error?.message || ""; } catch {}
-      throw new Error(`Graph ${r.status}: ${d || r.statusText}`);
+      let d = ""; try { d = (await r.json()).message; } catch {}
+      const e = new Error(`GitHub ${r.status}: ${d || r.statusText}`); e.status = r.status; throw e;
     }
-    return r.status === 204 ? null : r.json();
+    return r;
   }
-  async function resolveSite() {
-    if (siteId) return siteId;
-    const u = new URL(readCfg().siteUrl);
-    const s = await gfetch(`/sites/${u.hostname}:${u.pathname}`);
-    return (siteId = s.id);
-  }
-  async function resolveList(createIfMissing = false) {
-    if (listId) return listId;
-    const sid = await resolveSite(), name = readCfg().listName;
-    const res = await gfetch(`/sites/${sid}/lists?$filter=displayName eq '${name.replace(/'/g, "''")}'`);
-    if (res.value.length) return (listId = res.value[0].id);
-    if (!createIfMissing) throw new Error(`No existe la lista "${name}". Usa "Crear la lista en SharePoint".`);
-    return createList();
-  }
-  async function createList() {
-    const sid = await resolveSite(), name = readCfg().listName;
-    const body = {
-      displayName: name,
-      columns: [
-        { name: "Fecha", dateTime: { format: "dateOnly" } },
-        { name: "Responsable", text: {} },
-        { name: "Estado", choice: { choices: ["Pendiente", "En curso", "Completado"], displayAs: "dropDownMenu" } },
-        { name: "Prioridad", choice: { choices: ["Baja", "Media", "Alta"], displayAs: "dropDownMenu" } },
-        { name: "Descripcion", text: { allowMultipleLines: true } }
-      ],
-      list: { template: "genericList" }
-    };
-    const l = await gfetch(`/sites/${sid}/lists`, { method: "POST", body: JSON.stringify(body) });
-    return (listId = l.id);
-  }
-  $("btnCreateList").onclick = async () => {
+  const repoBase = () => { const c = readCfg(); return `/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}`; };
+
+  async function readData() {
+    const c = readCfg();
     try {
-      msg("Creando lista…");
-      listId = null;
-      const sid = await resolveSite(), name = readCfg().listName;
-      const res = await gfetch(`/sites/${sid}/lists?$filter=displayName eq '${name.replace(/'/g, "''")}'`);
-      if (res.value.length) { listId = res.value[0].id; msg(`La lista "${name}" ya existe.`, "info"); return; }
-      await createList(); msg(`Lista "${name}" creada con sus columnas.`, "ok");
-    } catch (e) { msg(e.message, "err"); }
+      const j = await (await gh(`${repoBase()}/contents/${encPath(c.dataPath)}?ref=${encodeURIComponent(c.branch)}`)).json();
+      let b64 = j.content;
+      if (!b64 || j.encoding === "none") b64 = (await (await gh(`${repoBase()}/git/blobs/${j.sha}`)).json()).content;
+      const text = b64ToText(b64 || "");
+      return { sha: j.sha, data: text.trim() ? JSON.parse(text) : [] };
+    } catch (e) {
+      if (e.status === 404) return { sha: null, data: [] };
+      throw e;
+    }
+  }
+  async function putFile(path, contentB64, message, sha) {
+    const c = readCfg();
+    const body = { message, content: contentB64, branch: c.branch };
+    if (sha) body.sha = sha;
+    return (await gh(`${repoBase()}/contents/${encPath(path)}`, { method: "PUT", body: JSON.stringify(body) })).json();
+  }
+
+  async function sendRecord(rec) {
+    const c = readCfg();
+    // 1) subir imagen (una sola vez, aunque se reintente)
+    if (rec.imagenData && !rec.imagen) {
+      const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const path = `${c.imgDir}/${name}`;
+      await putFile(path, rec.imagenData.split(",")[1], `Imagen: ${rec.titulo}`);
+      rec.imagen = path;
+      delete rec.imagenData;
+    }
+    // 2) agregar al JSON, con reintentos si hay conflicto de versión
+    const clean = { ...rec }; delete clean.imagenData;
+    for (let i = 0; i < 4; i++) {
+      const { sha, data } = await readData();
+      data.push(clean);
+      try {
+        await putFile(c.dataPath, textToB64(JSON.stringify(data, null, 2)), `Nuevo registro: ${rec.titulo}`, sha);
+        return;
+      } catch (e) {
+        if ((e.status === 409 || e.status === 422) && i < 3) continue;
+        throw e;
+      }
+    }
+  }
+
+  // ---------- imagen ----------
+  async function processImage(source) {
+    const bmp = source instanceof Blob ? await createImageBitmap(source, { imageOrientation: "from-image" }) : source;
+    const w = bmp.width || bmp.videoWidth, h = bmp.height || bmp.videoHeight;
+    const k = Math.min(1, MAX_SIDE / Math.max(w, h));
+    const cv = document.createElement("canvas"); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/jpeg", JPEG_Q);
+  }
+  function setImage(dataUrl) {
+    currentImage = dataUrl;
+    $("preview").src = dataUrl || ""; $("preview").classList.toggle("hide", !dataUrl);
+    $("btnRmImg").classList.toggle("hide", !dataUrl);
+    $("imgInfo").textContent = dataUrl ? `Tamaño aproximado: ${Math.round(dataUrl.length * 0.75 / 1024)} KB (se redimensiona a máx. ${MAX_SIDE}px)` : "";
+  }
+  async function onFile(e) {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    try { setImage(await processImage(f)); } catch (err) { msg("No se pudo leer la imagen: " + err.message, "err"); }
+  }
+  $("fileInput").onchange = onFile;
+  $("fileInputGallery").onchange = onFile;
+  $("btnPick").onclick = () => $("fileInputGallery").click();
+  $("btnRmImg").onclick = () => setImage(null);
+
+  async function openCam() {
+    const isTouch = matchMedia("(pointer:coarse)").matches;
+    if (isTouch || !navigator.mediaDevices?.getUserMedia) { $("fileInput").click(); return; }  // móvil: cámara nativa
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      $("camVideo").srcObject = camStream; $("camModal").classList.remove("hide");
+    } catch (e) {
+      msg("No se pudo abrir la cámara (" + e.message + "). Elige un archivo en su lugar.", "err");
+    }
+  }
+  function closeCam() {
+    if (camStream) camStream.getTracks().forEach(t => t.stop());
+    camStream = null; $("camVideo").srcObject = null; $("camModal").classList.add("hide");
+  }
+  $("btnCam").onclick = openCam;
+  $("camCancel").onclick = closeCam;
+  $("camShot").onclick = async () => {
+    try { setImage(await processImage($("camVideo"))); } catch (e) { msg(e.message, "err"); }
+    closeCam();
   };
 
   // ---------- guardar ----------
   function currentRecord() {
-    return {
-      Title: $("f_titulo").value.trim(), Fecha: $("f_fecha").value || null,
-      Responsable: $("f_resp").value.trim(), Estado: $("f_estado").value,
-      Prioridad: $("f_prio").value, Descripcion: $("f_desc").value.trim()
+    const r = {
+      id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+      creado: new Date().toISOString(),
+      titulo: $("f_titulo").value.trim(), fecha: $("f_fecha").value || null,
+      responsable: $("f_resp").value.trim(), estado: $("f_estado").value,
+      prioridad: $("f_prio").value, descripcion: $("f_desc").value.trim()
     };
+    if (currentImage) r.imagenData = currentImage;
+    return r;
   }
-  async function sendRecord(rec) {
-    const c = readCfg();
-    if (c.mode === "flow") {
-      if (!c.flowUrl) throw new Error("Falta la URL del flujo.");
-      const r = await fetch(c.flowUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rec) });
-      if (!r.ok) throw new Error("El flujo respondió " + r.status);
-      return;
-    }
-    const sid = await resolveSite(), lid = await resolveList(false);
-    const fields = { ...rec }; if (!fields.Fecha) delete fields.Fecha;
-    await gfetch(`/sites/${sid}/lists/${lid}/items`, { method: "POST", body: JSON.stringify({ fields }) });
-  }
-  function pendingList() { return lsGet(Q_KEY, []); }
+  const pendingList = () => lsGet(localStorage, Q_KEY, []);
   function updatePending() {
     const n = pendingList().length;
     $("pendingInfo").textContent = n ? `${n} registro(s) pendiente(s) de envío` : "";
     $("btnSync").classList.toggle("hide", !n);
   }
+  function resetForm() {
+    $("form").reset(); $("f_prio").value = "Media"; $("f_fecha").valueAsDate = new Date(); setImage(null);
+  }
   $("form").addEventListener("submit", async e => {
     e.preventDefault();
-    const rec = currentRecord(); if (!rec.Title) return;
-    $("btnSave").disabled = true;
+    const rec = currentRecord(); if (!rec.titulo) return;
+    $("btnSave").disabled = true; msg("Guardando en GitHub…");
     try {
       await sendRecord(rec);
-      msg("Registro guardado en SharePoint ✔", "ok");
-      $("form").reset(); $("f_prio").value = "Media";
-      if (readCfg().mode === "graph") loadItems();
+      msg("Registro guardado en GitHub ✔", "ok"); resetForm(); loadItems();
     } catch (err) {
-      const q = pendingList(); q.push(rec); lsSet(Q_KEY, q); updatePending();
-      msg("No se pudo enviar (" + err.message + "). Se guardó localmente para reintentar.", "err");
+      const q = pendingList(); q.push(rec);
+      const stored = lsSet(localStorage, Q_KEY, q);
+      updatePending();
+      msg("No se pudo enviar: " + err.message + (stored ? "\nSe guardó localmente para reintentar." : "\nAdemás no cupo en el almacenamiento local; no cierres esta página."), "err");
     } finally { $("btnSave").disabled = false; }
   });
-  $("btnClear").onclick = () => { $("form").reset(); $("f_prio").value = "Media"; };
+  $("btnClear").onclick = resetForm;
   $("btnSync").onclick = async () => {
-    const q = pendingList(), rest = []; let ok = 0;
-    for (const rec of q) { try { await sendRecord(rec); ok++; } catch { rest.push(rec); } }
-    lsSet(Q_KEY, rest); updatePending();
-    msg(`${ok} enviado(s), ${rest.length} sigue(n) pendiente(s).`, rest.length ? "err" : "ok");
-    if (ok && readCfg().mode === "graph") loadItems();
+    const q = pendingList(), rest = []; let ok = 0, lastErr = "";
+    for (const rec of q) { try { await sendRecord(rec); ok++; } catch (e) { rest.push(rec); lastErr = e.message; } }
+    lsSet(localStorage, Q_KEY, rest); updatePending();
+    msg(`${ok} enviado(s), ${rest.length} sigue(n) pendiente(s).` + (lastErr ? "\n" + lastErr : ""), rest.length ? "err" : "ok");
+    if (ok) loadItems();
   };
 
   // ---------- listar ----------
+  async function thumbUrl(path) {
+    if (thumbCache.has(path)) return thumbCache.get(path);
+    const c = readCfg();
+    const r = await gh(`${repoBase()}/contents/${encPath(path)}?ref=${encodeURIComponent(c.branch)}`,
+      { headers: { Accept: "application/vnd.github.raw+json" } });
+    const u = URL.createObjectURL(await r.blob());
+    thumbCache.set(path, u); return u;
+  }
   async function loadItems() {
-    if (readCfg().mode !== "graph" || !account) return;
     try {
-      const sid = await resolveSite(), lid = await resolveList(false);
-      const r = await gfetch(`/sites/${sid}/lists/${lid}/items?$expand=fields&$top=50`);
-      const rows = r.value.sort((a, b) => Number(b.id) - Number(a.id));
+      const { data } = await readData();
       const tb = $("tbody"); tb.innerHTML = "";
-      if (!rows.length) { tb.innerHTML = '<tr><td colspan="7"><small>Sin registros.</small></td></tr>'; return; }
-      for (const it of rows) {
-        const f = it.fields, tr = document.createElement("tr");
-        const vals = [it.id, f.Title, (f.Fecha || "").slice(0, 10), f.Responsable, f.Estado, f.Prioridad, f.Descripcion];
-        vals.forEach((v, i) => {
+      if (!data.length) { tb.innerHTML = '<tr><td colspan="7"><small>Sin registros.</small></td></tr>'; return; }
+      for (const it of [...data].reverse()) {
+        const tr = document.createElement("tr");
+        const tdImg = document.createElement("td");
+        if (it.imagen) {
+          const img = document.createElement("img"); img.className = "thumb"; img.alt = "";
+          tdImg.appendChild(img);
+          thumbUrl(it.imagen).then(u => { img.src = u; img.onclick = () => window.open(u, "_blank"); }).catch(() => { img.alt = "?"; });
+        }
+        tr.appendChild(tdImg);
+        [it.titulo, it.fecha || "", it.responsable, it.estado, it.prioridad, it.descripcion].forEach((v, i) => {
           const td = document.createElement("td");
-          if (i === 4 || i === 5) { const s = document.createElement("span"); s.className = "pill"; s.textContent = v ?? ""; td.appendChild(s); }
+          if (i === 3 || i === 4) { const s = document.createElement("span"); s.className = "pill"; s.textContent = v ?? ""; td.appendChild(s); }
           else td.textContent = v ?? "";
           tr.appendChild(td);
         });
@@ -329,24 +376,19 @@
 
   // ---------- probar ----------
   $("btnTest").onclick = async () => {
-    const c = readCfg();
     try {
-      if (c.mode === "flow") {
-        if (!c.flowUrl) throw new Error("Falta la URL del flujo.");
-        msg("Con Power Automate la prueba real es guardar un registro; la URL tiene formato válido: " + (/^https:\/\//.test(c.flowUrl) ? "sí" : "no"), "info");
-        return;
-      }
-      siteId = listId = null;
-      const sid = await resolveSite(); msg("Sitio encontrado. Buscando lista…");
-      await resolveList(false); msg("Conexión correcta: sitio y lista accesibles ✔", "ok");
+      const c = readCfg();
+      const r = await (await gh(repoBase())).json();
+      const canPush = r.permissions ? r.permissions.push : null;
+      msg(`Repositorio encontrado: ${r.full_name} (${r.private ? "privado" : "PÚBLICO"}).` +
+          (canPush === false ? "\n⚠️ El token no tiene permiso de escritura." : "\nPermiso de escritura: correcto ✔") +
+          (r.private ? "" : "\n⚠️ Un repo público expone todos los registros y fotos a cualquiera."), canPush === false ? "err" : "ok");
     } catch (e) { msg(e.message, "err"); }
   };
 
   // ---------- inicio ----------
-  applyCfg(lsGet(CFG_KEY, {}));
-  if (!$("f_fecha").value) $("f_fecha").valueAsDate = new Date();
-  updatePending();
-  if (readCfg().mode === "graph" && readCfg().clientId) initMsal().then(() => account && loadItems()).catch(() => {});
+  applyCfg(); updatePending(); $("f_fecha").valueAsDate = new Date();
+  if (readCfg().token && readCfg().owner && readCfg().repo) loadItems();
 })();
 </script>
 </body>
